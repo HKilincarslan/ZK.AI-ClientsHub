@@ -1,11 +1,16 @@
 import React from 'react';
+import { useState, useEffect } from 'react';
 import { useEffect } from 'react';
 import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
-import { supabase, hasSupabaseConfig } from '../lib/supabase';
+import { supabase, hasSupabaseConfig, testSupabaseConnection } from '../lib/supabase';
 import { Zap } from 'lucide-react';
 
 export default function AuthForm() {
+  const [connectionStatus, setConnectionStatus] = useState<{
+    testing: boolean;
+    result: { success: boolean; error: string | null; details?: any } | null;
+  }>({ testing: false, result: null });
 
   // Clear any preview mode artifacts on auth form load
   React.useEffect(() => {
@@ -14,6 +19,22 @@ export default function AuthForm() {
     sessionStorage.removeItem('demo-user');
     localStorage.removeItem('preview-session');
   }, []);
+
+  // Test connection when component mounts
+  useEffect(() => {
+    if (hasSupabaseConfig && supabase) {
+      setConnectionStatus({ testing: true, result: null });
+      testSupabaseConnection().then(result => {
+        setConnectionStatus({ testing: false, result });
+      });
+    }
+  }, []);
+
+  const handleTestConnection = async () => {
+    setConnectionStatus({ testing: true, result: null });
+    const result = await testSupabaseConnection();
+    setConnectionStatus({ testing: false, result });
+  };
 
   // Show error if Supabase is not configured
   if (!hasSupabaseConfig || !supabase) {
@@ -30,17 +51,17 @@ export default function AuthForm() {
               Configuration Required
             </h1>
             <p className="mt-2 text-sm text-purple-300">
-              Please connect to Supabase to enable authentication
+              Please configure Supabase credentials to enable authentication
             </p>
           </div>
           
           <div className="bg-slate-800/50 backdrop-blur-xl py-8 px-6 shadow-2xl rounded-2xl border border-purple-500/20">
             <div className="text-center">
               <p className="text-purple-300 mb-4">
-                Click the "Connect to Supabase" button in the top right corner to set up authentication.
+                Add your Supabase credentials to the .env file to enable authentication.
               </p>
               <div className="text-xs text-purple-400 mb-4">
-                <p>Environment variables needed:</p>
+                <p>Required environment variables in .env file:</p>
                 <ul className="mt-2 space-y-1 text-left">
                   <li>• VITE_SUPABASE_URL</li>
                   <li>• VITE_SUPABASE_ANON_KEY</li>
@@ -74,6 +95,35 @@ export default function AuthForm() {
           <p className="mt-2 text-sm text-purple-300">
             Access your client portal and manage your AI workflows
           </p>
+        </div>
+
+        {/* Connection Status */}
+        <div className="bg-slate-800/30 backdrop-blur-xl py-4 px-6 rounded-xl border border-purple-500/10">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <div className={`w-2 h-2 rounded-full ${
+                connectionStatus.testing ? 'bg-yellow-400 animate-pulse' :
+                connectionStatus.result?.success ? 'bg-green-400' : 'bg-red-400'
+              }`} />
+              <span className="text-sm text-purple-300">
+                {connectionStatus.testing ? 'Testing connection...' :
+                 connectionStatus.result?.success ? 'Connected to Supabase' :
+                 connectionStatus.result ? 'Connection failed' : 'Not tested'}
+              </span>
+            </div>
+            <button
+              onClick={handleTestConnection}
+              disabled={connectionStatus.testing}
+              className="text-xs text-purple-400 hover:text-purple-300 disabled:opacity-50"
+            >
+              Test
+            </button>
+          </div>
+          {connectionStatus.result && !connectionStatus.result.success && (
+            <div className="mt-2 text-xs text-red-300">
+              {connectionStatus.result.error}
+            </div>
+          )}
         </div>
         
         <div className="bg-slate-800/50 backdrop-blur-xl py-8 px-6 shadow-2xl rounded-2xl border border-purple-500/20">

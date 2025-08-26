@@ -21,7 +21,9 @@ export const hasSupabaseConfig = !!(
   supabaseUrl && 
   supabaseAnonKey && 
   supabaseUrl.startsWith('https://') &&
+  supabaseUrl !== 'https://your-project-id.supabase.co' &&
   supabaseAnonKey.length > 20
+  && supabaseAnonKey !== 'your-anon-key-here'
 );
 
 console.log('✅ Supabase config valid:', hasSupabaseConfig);
@@ -32,7 +34,9 @@ if (!hasSupabaseConfig) {
     url: supabaseUrl ? 'present' : 'missing',
     key: supabaseAnonKey ? 'present' : 'missing',
     urlValid: supabaseUrl ? supabaseUrl.startsWith('https://') : false,
+    urlNotPlaceholder: supabaseUrl !== 'https://your-project-id.supabase.co',
     keyValid: supabaseAnonKey ? supabaseAnonKey.length > 20 : false
+    keyNotPlaceholder: supabaseAnonKey !== 'your-anon-key-here'
   });
 }
 
@@ -41,39 +45,94 @@ export const supabase = hasSupabaseConfig
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
-// Test Supabase connection with timeout and error handling
+// Enhanced connection test with better error reporting
 export const testSupabaseConnection = async () => {
   if (!supabase) {
-    console.log('❌ No supabase client available');
-    return { success: false, error: 'Supabase not configured' };
+    const reason = !hasSupabaseConfig ? 'Invalid configuration' : 'Client not initialized';
+    console.log('❌ No supabase client available:', reason);
+    return { 
+      success: false, 
+      error: `Supabase not configured: ${reason}`,
+      details: {
+        hasUrl: !!supabaseUrl,
+        hasKey: !!supabaseAnonKey,
+        urlValid: supabaseUrl ? supabaseUrl.startsWith('https://') : false,
+        keyValid: supabaseAnonKey ? supabaseAnonKey.length > 20 : false
+      }
+    };
   }
   
   try {
-    console.log('🔍 Testing connection to Supabase...');
+    console.log('🔍 Testing connection to Supabase...', {
+      url: supabaseUrl.substring(0, 30) + '...',
+      timestamp: new Date().toISOString()
+    });
     
-    // Quick health check with shorter timeout for production
+    // Test with timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1500);
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
     
-    // Test auth connection instead of database query to avoid permission issues
+    // Test auth connection - this is the most basic test
     const { data, error } = await supabase.auth.getSession();
     clearTimeout(timeoutId);
     
     if (error) {
-      console.log('❌ Connection test failed:', error.message);
-      return { success: false, error: 'Auth connection failed' };
+      console.log('❌ Connection test failed:', {
+        message: error.message,
+        status: error.status,
+        details: error
+      });
+      return { 
+        success: false, 
+        error: `Auth connection failed: ${error.message}`,
+        details: error
+      };
     }
     
-    console.log('✅ Connection test successful');
-    return { success: true, error: null };
+    console.log('✅ Connection test successful', {
+      hasSession: !!data.session,
+      timestamp: new Date().toISOString()
+    });
+    
+    return { 
+      success: true, 
+      error: null,
+      details: {
+        hasSession: !!data.session,
+        sessionExpiry: data.session?.expires_at,
+        user: data.session?.user?.email
+      }
+    };
   } catch (err) {
     const errorMessage = err instanceof Error ? 
       (err.name === 'AbortError' ? 'Connection timeout' : err.message) : 
       'Network error';
-    console.log('❌ Connection test error:', errorMessage);
-    return { success: false, error: errorMessage };
+    
+    console.log('❌ Connection test error:', {
+      message: errorMessage,
+      error: err,
+      timestamp: new Date().toISOString()
+    });
+    
+    return { 
+      success: false, 
+      error: errorMessage,
+      details: err
+    };
   }
 };
+
+// Auto-test connection on module load in development
+if (appConfig.isDevelopment && hasSupabaseConfig) {
+  console.log('🔄 Auto-testing Supabase connection in development...');
+  testSupabaseConnection().then(result => {
+    if (result.success) {
+      console.log('🎉 Supabase connection verified!');
+    } else {
+      console.warn('⚠️ Supabase connection test failed:', result.error);
+    }
+  });
+}
 
 // Database types
 export interface Profile {
